@@ -1,1 +1,83 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Test Bucket using CloudFormation
+
+Parameters:
+  BucketName: 
+    Type: String
+    Default: demo-bucket-for-testing-cloudformation
+
+  AccessLogsBucketName:
+    Type: String
+    Default: demo-bucket-for-demo-cloudformation-bucket
+
+  KmsKeyArn:
+    Type: String
+    Default: ""
+
+Resources:
+
+  AccessLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref AccessLogsBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  AccessLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AccessLogsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${AccessLogsBucket.Arn}/access-logs/*"
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Sub "${AWS::AccountId}"
+              ArnLike:
+                "aws:SourceArn": !Sub "arn:aws:s3:::${BucketName}"
+
+  MainBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: AccessLogsBucket
+    Properties: 
+      BucketName: !Ref BucketName
+
+      VersioningConfiguration:
+        Status: Enabled
+
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogsBucket
+        LogFilePrefix: access-logs/
+
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+Outputs:
+  MainBucketName:
+    Description: Name of the main bucket
+    Value: !Ref MainBucket
+
+  AccessLogsBucketName:
+    Description: Name of the access logs bucket
+    Value: !Ref AccessLogsBucketName
 
