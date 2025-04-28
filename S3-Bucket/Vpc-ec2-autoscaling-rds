@@ -1,1 +1,353 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template creates a LAMP (Linux, Apache, PHP) stack with RDS.
 
+Parameters:
+
+#----VPC related Parameters----#
+  VPCcidr: 
+    Type: String
+    Description: Cidr Range for VPC
+    Default: 10.0.0.0/16
+
+  VpcAzs: 
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+    Description: AZs for VPC
+
+  SubnetCidr:
+    Type: CommaDelimitedList 
+    Description: Cidr Range to be used in subnets
+    Default: 10.0.1.0/24, 10.0.2.0/24, 10.0.3.0/24, 10.0.4.0/24
+#----VPC related Parameters----#
+
+#----Ec2 Related Parameters-----#
+  InstanceType:
+    Description: EC2 Instance Type
+    Type: String
+    Default: t3.micro
+    AllowedValues: 
+      - t2.micro
+      - t2.small
+      - t3.micro
+      - t3.small
+#----Ec2 Related Parameters-----#
+
+#----RDS Related Parameters-----#
+  DBUsername:
+    Description: Username for the RDS database
+    Type: String
+    Default: admin
+
+  DBPassword:
+    Description: Password for the RDS database
+    Type: String
+    NoEcho: true 
+    MinLength: 8
+    MaxLength: 41
+    AllowedPattern: "[a-zA-Z0-9]*"
+    ConstraintDescription: "Password must be 8-41 characters long and contain only letters and numbers."
+
+
+  DBName: 
+    Description: Name of the database
+    Type: String
+    Default: mydb
+#----RDS Related Parameters-----#
+
+Resources:
+
+#-----KeyPair----#
+  EC2KeyPair: 
+    Type: AWS::EC2::KeyPair 
+    Properties: 
+      KeyName: LAMPStackKeyPair 
+#-----KeyPair----#
+
+#---Virtual Private Cloud----#
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCcidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true 
+      Tags:
+        - Key: keyname
+          Value: LAMP-vpc
+#---Virtual Private Cloud----#
+
+#---Internet Gateway----#
+  igwName:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: keyname
+          Value: LAMP-vpc-IGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref myVPC
+      InternetGatewayId: !Ref igwName
+#---Internet Gateway----#
+
+#---Public and Private subnets----#
+  PublicSubnetAza:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !Ref VpcAzs]
+      VpcId: !Ref myVPC
+      CidrBlock: !Select [0, !Ref SubnetCidr]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: keyname
+          Value: Public-Subnet-AZ-a
+  
+  PublicSubnetNameAZb:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !Ref VpcAzs]
+      VpcId: !Ref myVPC
+      CidrBlock: !Select [1, !Ref SubnetCidr]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: keyname
+          Value: Public-Subnet-AZ-b
+  
+  PrivateSubnetNameAZc:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [2, !Ref VpcAzs]
+      VpcId: !Ref myVPC
+      CidrBlock: !Select [2, !Ref SubnetCidr]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: keyname
+          Value: Private-Subnet-AZ-c
+  
+  PrivateSubnetNameAZd:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !Ref VpcAzs]
+      VpcId: !Ref myVPC
+      CidrBlock: !Select [3, !Ref SubnetCidr]  # Using 4th CIDR (10.0.4.0/24)
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: keyname
+          Value: Private-Subnet-AZ-d
+#---Public and Private subnets----#
+
+#----Public Route Table----#
+  PublicRouteTableName:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+        - Key: keyname
+          Value: PublicRouteTable-LAMP-VPC
+
+  PublicSubnetRouteTableAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetAza
+      RouteTableId: !Ref PublicRouteTableName
+
+  PublicSubnetRouteTableAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetNameAZb
+      RouteTableId: !Ref PublicRouteTableName
+
+  routeName:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTableName
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref igwName
+#----Public Route Table----#
+
+#----Private Route Table----#
+  PrivateRouteTableName:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+        - Key: keyname
+          Value: PrivateRouteTable-LAMP-VPC
+
+  PrivateRouteTableAssocName:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetNameAZc
+      RouteTableId: !Ref PrivateRouteTableName
+
+  PrivateRouteTableAssocName2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetNameAZd
+      RouteTableId: !Ref PrivateRouteTableName
+
+
+  # PrivateRouteName:
+  #   Type: AWS::EC2::Route
+  #   Properties:
+  #     RouteTableId: !Ref PrivateRouteTableName
+  #     DestinationCidrBlock: 10.0.0.0/16
+#----Private Route Table----#
+
+
+#---EC2 Security Group----#
+  LAMPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH, HTTP, and access to RDS.
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup  # Here Alb security group is included in inbound
+#---EC2 Security Group----#
+
+#---Loadbalancer Security Group----#
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ALB
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+#---Loadbalancer Security Group----#
+
+#---RDS Security Group----#
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS and allow access to EC2.
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref LAMPSecurityGroup
+#---RDS Security Group----#
+
+#-----EC2 Instance-----#
+
+  myEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: !Ref EC2KeyPair
+      ImageId: ami-0d61ea20f09848335
+      InstanceType: !Ref InstanceType
+      SecurityGroupIds:
+        - !Ref LAMPSecurityGroup
+      SubnetId: !Ref PublicSubnetAza  # Ensure the instance is launched in a valid subnet within the VPC
+      # VpcId: !Ref myVPC
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -ex
+          yum update -y 
+          amazon-linux-extras enable php8.0
+          yum clean metadata
+          yum install -y httpd php php-mysqlnd
+          yum install -y mysql
+          systemctl enable httpd
+          systemctl start httpd
+          echo "<?php phpinfo(); ?>" > /var/www/html/index.php
+      Tags:
+        - Key: key
+          Value: ec2
+#-----EC2 Instance-----#
+
+# -----Relational Database----#
+  rdsDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      AllowMajorVersionUpgrade: true
+      AutoMinorVersionUpgrade: true
+      DBName: !Ref DBName
+      # DBSecurityGroups: 
+      #   - !Ref RDSSecurityGroup
+      Engine: mysql
+      EngineVersion: 8.0
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: false
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref rdsDBSubnetGroup 
+      Tags:
+        - Key: keyname
+          Value: rds
+
+  rdsDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: This RDS Subnet group
+      SubnetIds:
+        - !Ref PrivateSubnetNameAZc
+        - !Ref PrivateSubnetNameAZd
+      Tags:
+        - Key: keyname
+          Value: subnetgroup
+# -----Relational Database----#
+
+# ----Application Load Balancer-----#
+
+  TargetGroup: 
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup 
+    Properties:
+      VpcId: !Ref myVPC
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      Targets:
+        - Id: !Ref myEC2Instance
+  
+  AppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: lamp-alb
+      Subnets:
+        - !Ref PublicSubnetAza
+        - !Ref PublicSubnetNameAZb
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Scheme: internet-facing
+
+  AlbListner:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+
+    LoadBalancerArn: !Ref AppLoadBalancer
+        Port: 80
+        Protocol: HTTP
+        DefaultActions:
+          - Type: forward
+            TargetGroupArn: !Ref TargetGroup
+# ----Application Load Balancer-----#
+  
+
+Outputs:
+  ALBURL:
+    Description: Load Balancer URL
+    Value: !GetAtt AppLoadBalancer.DNSName
+
+  RDSEndpoint:
+    Description: RDS Endpoint
+    Value: !GetAtt rdsDBInstance.Endpoint.Address
+
+  KeyPairName:
+    Description: Name of generated EC2 Key Pair
+    Value: !Ref EC2KeyPair
+      
